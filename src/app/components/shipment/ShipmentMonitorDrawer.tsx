@@ -3,7 +3,8 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   ShieldAlert,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Switch } from '../ui/switch';
@@ -53,6 +54,10 @@ export default function ShipmentMonitorDrawer({ isOpen, onClose, shipmentId }: S
   const [isMonitoringEnabled, setIsMonitoringEnabled] = useState(true);
   const [selectedRules, setSelectedRules] = useState<string[]>(['R-001', 'R-002', 'R-004']);
 
+  // ── 前置校验：供应商是否已订阅成功并建立基准数据 ──
+  // Mock: false = 尚未就绪，显示警告并禁用主开关
+  const [baselineReady] = useState(false);
+
   const toggleRule = (ruleId: string) => {
     if (selectedRules.includes(ruleId)) {
       setSelectedRules(selectedRules.filter(id => id !== ruleId));
@@ -71,18 +76,32 @@ export default function ShipmentMonitorDrawer({ isOpen, onClose, shipmentId }: S
     >
       <div className="flex flex-col h-full bg-slate-50">
         
-        {/* Warning Alert */}
-        <div className="px-6 py-4 bg-amber-50 border-b border-amber-100">
-          <div className="flex gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-semibold text-amber-800">前置校验</h4>
-              <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                开启监控前，请确保本票已录入正确的 <strong>船公司代码 (SCAC)</strong> 和 <strong>提单号 (MBL)</strong>，否则无法进行轨迹比对。
-              </p>
+        {/* Warning Alert - 前置校验 */}
+        {!baselineReady && (
+          <div className="px-6 py-4 bg-amber-50 border-b border-amber-200">
+            <div className="flex gap-3">
+              <div className="shrink-0 mt-0.5 w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                <AlertTriangle className="w-4.5 h-4.5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-amber-900">前置校验未通过</h4>
+                <p className="text-xs text-amber-700 mt-1.5 leading-relaxed">
+                  请等待供应商<strong>成功订阅</strong>后，并<strong>建立监控基准线</strong>后再开启监控。
+                </p>
+                <div className="mt-3 flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+                    <span className="text-[11px] text-amber-600 font-medium">供应商订阅中...</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 bg-white" />
+                    <span className="text-[11px] text-slate-400 font-medium">基准数据待建立</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
           
@@ -92,15 +111,30 @@ export default function ShipmentMonitorDrawer({ isOpen, onClose, shipmentId }: S
               <div className="space-y-1">
                 <h3 className="text-base font-semibold text-slate-900">启用监控</h3>
                 <p className="text-xs text-slate-500">
-                  {isMonitoringEnabled ? '系统正在持续追踪此订单动态。' : '监控已暂停。'}
+                  {!baselineReady
+                    ? '基准数据尚未就绪，无法开启监控。'
+                    : isMonitoringEnabled
+                      ? '系统正在持续追踪此订单动态。'
+                      : '监控已暂停。'}
                 </p>
               </div>
               <Switch 
-                checked={isMonitoringEnabled}
+                checked={baselineReady && isMonitoringEnabled}
                 onCheckedChange={setIsMonitoringEnabled}
-                className="data-[state=checked]:bg-emerald-500"
+                disabled={!baselineReady}
+                className={clsx(
+                  "data-[state=checked]:bg-emerald-500",
+                  !baselineReady && "opacity-50 cursor-not-allowed"
+                )}
               />
             </div>
+            {!baselineReady && (
+              <div className="mt-3 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  当供应商完成订阅并返回首次基准数据后，此开关将自动解锁。
+                </p>
+              </div>
+            )}
           </section>
 
           {/* Rule Selection */}

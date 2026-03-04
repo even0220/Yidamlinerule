@@ -3,7 +3,8 @@ import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import {
   X, Plus, Trash2, Save, AlertTriangle, Play,
   Clock, Anchor, Repeat2, Timer, Info, Flag, ChevronDown,
-  ExternalLink, Mail, Bell, MessageSquare, Users, Pen, Languages
+  ExternalLink, Mail, Bell, MessageSquare, Users, Pen, Languages,
+  Copy, Search, CheckCircle2, XCircle, AlertOctagon, Loader2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { toast } from 'sonner';
@@ -37,10 +38,13 @@ interface RuleFormValues {
   channels: string[];
 }
 
+type DrawerMode = 'create' | 'edit' | 'duplicate';
+
 interface RuleDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: any;
+  mode?: DrawerMode;
 }
 
 // ─── Domain Options ───────────────────────────────────────────
@@ -283,22 +287,27 @@ const MOCK_SCENARIOS: ConditionRow[] = [
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function RuleDrawer({ isOpen, onClose, initialData }: RuleDrawerProps) {
+export default function RuleDrawer({ isOpen, onClose, initialData, mode: modeProp }: RuleDrawerProps) {
+  const mode: DrawerMode = modeProp || (initialData ? 'edit' : 'create');
   const { register, control, handleSubmit, reset, watch, setValue, getValues } = useForm<RuleFormValues>({
     defaultValues: DEFAULT_VALUES,
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: 'conditions' });
   const [isTesting, setIsTesting] = useState(false);
+  const [testModalOpen, setTestModalOpen] = useState(false);
   const [overrideEnabled, setOverrideEnabled] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
+      setOverrideEnabled(false);
       if (initialData) {
+        const isDuplicate = mode === 'duplicate';
         reset({
           ...DEFAULT_VALUES,
-          name: initialData.name || '',
+          name: isDuplicate ? `${initialData.name} - 副本` : (initialData.name || ''),
           domains: initialData.domains || ['sea_export'],
+          enabled: isDuplicate ? false : (initialData.status ?? true),
           conditions: MOCK_SCENARIOS,
           templateId: 'tpl_001',
           recipients: ['op', 'sales'],
@@ -310,20 +319,20 @@ export default function RuleDrawer({ isOpen, onClose, initialData }: RuleDrawerP
         });
       }
     }
-  }, [isOpen, initialData, reset]);
+  }, [isOpen, initialData, mode, reset]);
 
   const onSubmit = (data: RuleFormValues) => {
     console.log('Saving Rule:', data);
-    toast.success(initialData ? '规则已更新' : '规则创建成功');
+    if (mode === 'duplicate') {
+      toast.success('规则克隆成功', { description: `「${data.name}」已创建，默认为停用状态。` });
+    } else {
+      toast.success(mode === 'edit' ? '规则已更新' : '规则创建成功');
+    }
     onClose();
   };
 
   const handleTestRun = () => {
-    setIsTesting(true);
-    setTimeout(() => {
-      setIsTesting(false);
-      toast.info('模拟测试完成：匹配到 3 条历史订单记录。', { description: '结果仅用于参考，实际触发以线上数据为准。' });
-    }, 1800);
+    setTestModalOpen(true);
   };
 
   const watchDomains = watch('domains');
@@ -347,6 +356,12 @@ export default function RuleDrawer({ isOpen, onClose, initialData }: RuleDrawerP
 
   if (!isOpen) return null;
 
+  const drawerTitle = mode === 'duplicate' ? '克隆预警规则' : (mode === 'edit' ? '编辑预警规则' : '新建预警规则');
+  const drawerSubtitle = mode === 'duplicate'
+    ? '基于已有规则创建副本，所有配置已预填充，请确认后保存。'
+    : '配置自动化异常检测逻辑与响应动作。';
+  const saveLabel = mode === 'duplicate' ? '保存副本' : '保存并启用';
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
@@ -354,16 +369,36 @@ export default function RuleDrawer({ isOpen, onClose, initialData }: RuleDrawerP
       <div className="absolute inset-y-0 right-0 w-full max-w-[740px] bg-white shadow-2xl flex flex-col">
         {/* ── Header ──────────────────────────────── */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              {initialData ? '编辑预警规则' : '新建预警规则'}
-            </h2>
-            <p className="text-sm text-slate-500">配置自动化异常检测逻辑与响应动作。</p>
+          <div className="flex items-center gap-3">
+            {mode === 'duplicate' && (
+              <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                <Copy className="w-4 h-4 text-indigo-600" />
+              </div>
+            )}
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {drawerTitle}
+              </h2>
+              <p className="text-sm text-slate-500">{drawerSubtitle}</p>
+            </div>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* ── Clone Info Banner ───────────────────── */}
+        {mode === 'duplicate' && initialData && (
+          <div className="px-6 py-3 bg-indigo-50 border-b border-indigo-100 flex items-start gap-3 shrink-0">
+            <Info className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+            <div className="text-xs text-indigo-800 leading-relaxed">
+              <span className="font-semibold">克隆来源：</span>
+              <span className="font-mono bg-indigo-100 px-1.5 py-0.5 rounded mx-1">{initialData.id}</span>
+              {initialData.name}
+              <span className="text-indigo-600 ml-2">— 所有条件与动作已继承，规则状态默认为停用。</span>
+            </div>
+          </div>
+        )}
 
         {/* ── Warning Banner ─────────────────────── */}
         <div className="px-6 py-3 bg-amber-50 border-b border-amber-100 flex items-start gap-3 shrink-0">
@@ -543,6 +578,9 @@ export default function RuleDrawer({ isOpen, onClose, initialData }: RuleDrawerP
           </form>
         </div>
 
+        {/* ── Test Run Modal ──────────────────────── */}
+        <TestRunModal isOpen={testModalOpen} onClose={() => setTestModalOpen(false)} ruleName={watch('name')} />
+
         {/* ── Footer ─────────────────────────────── */}
         <div className="bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
           <button
@@ -560,12 +598,254 @@ export default function RuleDrawer({ isOpen, onClose, initialData }: RuleDrawerP
           <div className="flex gap-3">
             <button onClick={onClose} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">取消</button>
             <button type="submit" form="rule-form" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
-              <Save className="w-4 h-4" />
-              保存并启用
+              {mode === 'duplicate' ? <Copy className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {saveLabel}
             </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  TEST RUN MODAL
+// ═══════════════════════════════════════════════════════════════
+
+type TestResult = 'hit' | 'miss' | null;
+
+const MOCK_TEST_DATA: Record<string, { result: TestResult; detail: string }> = {
+  'COSU62738492': { result: 'hit', detail: '最新 ETA 延误 96 小时（基准 ETA: 2026-03-10 → 最新 ETA: 2026-03-14）' },
+  'MAEU12345678': { result: 'miss', detail: '最新 ETA 延误 12 小时，未超过阈值 72 小时' },
+  'OOLU98765432': { result: 'hit', detail: '船名由 CSCL SATURN 变更为 COSCO FORTUNE，触发属性变更规则' },
+};
+
+function TestRunModal({ isOpen, onClose, ruleName }: { isOpen: boolean; onClose: () => void; ruleName: string }) {
+  const [mblInput, setMblInput] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [result, setResult] = useState<TestResult>(null);
+  const [resultDetail, setResultDetail] = useState('');
+  const [inputError, setInputError] = useState('');
+
+  // Reset state when opened
+  useEffect(() => {
+    if (isOpen) {
+      setMblInput('');
+      setIsRunning(false);
+      setResult(null);
+      setResultDetail('');
+      setInputError('');
+    }
+  }, [isOpen]);
+
+  const handleStartTest = () => {
+    if (!mblInput.trim()) {
+      setInputError('请输入提单号');
+      return;
+    }
+    setInputError('');
+    setIsRunning(true);
+    setResult(null);
+
+    // Simulate API call
+    setTimeout(() => {
+      const mockResult = MOCK_TEST_DATA[mblInput.trim().toUpperCase()];
+      if (mockResult) {
+        setResult(mockResult.result);
+        setResultDetail(mockResult.detail);
+      } else {
+        // Random result for unknown MBL
+        const isHit = Math.random() > 0.5;
+        setResult(isHit ? 'hit' : 'miss');
+        setResultDetail(
+          isHit
+            ? `最新 ETA 延误 ${Math.floor(Math.random() * 120 + 73)} 小时，超过阈值 72 小时`
+            : '该单据当前轨迹数据不满足任何已配置的触发条件'
+        );
+      }
+      setIsRunning(false);
+    }, 2000);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2 }}
+        className="relative w-full max-w-lg mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden"
+      >
+        {/* Modal Header */}
+        <div className="px-6 py-5 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+              <Play className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">规则模拟测试</h3>
+              {ruleName && (
+                <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[320px]">
+                  当前规则：{ruleName}
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-slate-500 mt-3 leading-relaxed">
+            输入一个已存在轨迹数据的提单号 (MBL)，系统将使用当前表单中的规则条件进行一次
+            <span className="font-semibold text-slate-700">"空跑 (Dry-Run)"</span>
+            ，<span className="text-amber-600 font-medium">不会实际发送通知</span>。
+          </p>
+        </div>
+
+        {/* Modal Body */}
+        <div className="px-6 py-5 space-y-5">
+          {/* MBL Input */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              提单号 (MBL No.) <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={mblInput}
+                onChange={e => { setMblInput(e.target.value); setInputError(''); }}
+                onKeyDown={e => e.key === 'Enter' && !isRunning && handleStartTest()}
+                placeholder="例如：COSU62738492"
+                className={clsx(
+                  "w-full pl-10 pr-4 py-2.5 border rounded-lg text-sm outline-none transition-shadow font-mono tracking-wide",
+                  inputError
+                    ? "border-red-300 focus:ring-2 focus:ring-red-500"
+                    : "border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                )}
+                autoFocus
+                disabled={isRunning}
+              />
+            </div>
+            {inputError && (
+              <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> {inputError}
+              </p>
+            )}
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              可试用示例：COSU62738492（命中）、MAEU12345678（未命中）
+            </p>
+          </div>
+
+          {/* Running Indicator */}
+          {isRunning && (
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-3 px-4 py-3 bg-indigo-50 rounded-xl border border-indigo-100"
+            >
+              <Loader2 className="w-5 h-5 text-indigo-500 animate-spin shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-indigo-800">正在执行空跑测试...</p>
+                <p className="text-xs text-indigo-600 mt-0.5">
+                  正在检索 <span className="font-mono font-semibold">{mblInput}</span> 的轨迹数据并匹配规则条件
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Result Card */}
+          {result && !isRunning && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {result === 'hit' ? (
+                <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 overflow-hidden">
+                  <div className="px-4 py-3 bg-emerald-100 flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span className="text-sm font-semibold text-emerald-800">✅ 命中预警！</span>
+                  </div>
+                  <div className="px-4 py-3 space-y-2">
+                    <p className="text-sm text-emerald-800 leading-relaxed">
+                      当前单据的数据满足上述规则条件，在实际运行中<strong>将会触发通知</strong>。
+                    </p>
+                    <div className="flex items-start gap-2 px-3 py-2 bg-white rounded-lg border border-emerald-200">
+                      <Info className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-emerald-700 leading-relaxed">{resultDetail}</p>
+                    </div>
+                    <p className="text-[11px] text-emerald-600 italic">
+                      此为模拟结果，不会实际发送通知或产生工单。
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border-2 border-amber-200 bg-amber-50 overflow-hidden">
+                  <div className="px-4 py-3 bg-amber-100 flex items-center gap-2">
+                    <XCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <span className="text-sm font-semibold text-amber-800">⛔ 未命中预警</span>
+                  </div>
+                  <div className="px-4 py-3 space-y-2">
+                    <p className="text-sm text-amber-800 leading-relaxed">
+                      该单据当前数据<strong>不满足</strong>触发条件，在实际运行中不会产生预警。
+                    </p>
+                    <div className="flex items-start gap-2 px-3 py-2 bg-white rounded-lg border border-amber-200">
+                      <Info className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-amber-700 leading-relaxed">{resultDetail}</p>
+                    </div>
+                    <p className="text-[11px] text-amber-600 italic">
+                      可尝试调整规则条件阈值或更换其他提单号重新测试。
+                    </p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="text-[11px] text-slate-400">
+            测试结果仅供参考，以线上实际数据为准
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-white transition-colors"
+            >
+              {result ? '关闭' : '取消'}
+            </button>
+            <button
+              onClick={handleStartTest}
+              disabled={isRunning}
+              className={clsx(
+                "px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2",
+                isRunning
+                  ? "bg-indigo-400 text-white cursor-wait"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              )}
+            >
+              {isRunning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  测试中...
+                </>
+              ) : result ? (
+                <>
+                  <Play className="w-4 h-4" />
+                  重新测试
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  开始测试
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -659,7 +939,7 @@ function ConditionRowComponent({
           <span className="text-[10px] font-mono text-slate-500 mt-2.5 w-5 text-right select-none shrink-0">{index + 1}.</span>
 
           <div className="flex-1 space-y-2">
-            {/* ── Scenario: DATE ─────────────────────── */}
+            {/* ── Scenario: DATE ────────────────────── */}
             {category === 'date' && (
               <div className="flex flex-wrap items-center gap-2">
                 <select {...register(`conditions.${index}.monitorTarget`)} className={clsx(SEL, "flex-1 min-w-[140px]")}>

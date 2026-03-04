@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Plus, Search, Filter, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Search, Filter, Edit2, Trash2, Copy } from 'lucide-react';
 import { clsx } from 'clsx';
+import { toast } from 'sonner';
 import RuleDrawer from '../components/rules/RuleDrawer';
 
 // Mock Data
@@ -11,6 +12,9 @@ const MOCK_RULES = [
     domains: ['sea_export'],
     condition_summary: '最新ETA 对比基准延误大于 72小时',
     status: true,
+    updatedAt: '2026-03-04 14:30',
+    updatedBy: '张三',
+    boundShipments: 2, // 被单票手动订阅数量
   },
   {
     id: 'R-002',
@@ -18,6 +22,9 @@ const MOCK_RULES = [
     domains: ['sea_export', 'sea_import'],
     condition_summary: '最新船名 不等于基准数据',
     status: true,
+    updatedAt: '2026-03-03 09:15',
+    updatedBy: '李四',
+    boundShipments: 0,
   },
   {
     id: 'R-003',
@@ -25,6 +32,9 @@ const MOCK_RULES = [
     domains: ['sea_export', 'air_export'],
     condition_summary: '实际中转行为 不等于 原定中转计划(直达)',
     status: true,
+    updatedAt: '2026-03-02 17:45',
+    updatedBy: '王五',
+    boundShipments: 1,
   },
   {
     id: 'R-004',
@@ -32,6 +42,9 @@ const MOCK_RULES = [
     domains: ['sea_export', 'sea_import', 'air_export', 'air_import'],
     condition_summary: 'GIPOL重箱进港 → 超过5天 → LOAD装船未发生',
     status: false,
+    updatedAt: '2026-02-28 11:20',
+    updatedBy: '张三',
+    boundShipments: 0,
   },
   {
     id: 'R-005',
@@ -39,6 +52,9 @@ const MOCK_RULES = [
     domains: ['sea_export', 'sea_import'],
     condition_summary: '里程碑达成：DPOL起运港开航, APOD目的港抵达',
     status: true,
+    updatedAt: '2026-03-01 08:50',
+    updatedBy: '赵六',
+    boundShipments: 3,
   },
 ];
 
@@ -52,21 +68,41 @@ const DOMAIN_LABEL: Record<string, { text: string; cls: string }> = {
 export default function GlobalRuleBuilder() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<any>(null);
+  const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'duplicate'>('create');
   const [rules, setRules] = useState(MOCK_RULES);
 
   const handleCreateNew = () => {
     setEditingRule(null);
+    setDrawerMode('create');
     setIsDrawerOpen(true);
   };
 
   const handleEdit = (rule: any) => {
     setEditingRule(rule);
+    setDrawerMode('edit');
     setIsDrawerOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('确定要删除这条规则吗？')) {
-      setRules(rules.filter(r => r.id !== id));
+  // ── 复制/克隆规则 → 打开抽屉进入克隆模式 ──
+  const handleDuplicate = (rule: any) => {
+    setEditingRule(rule);
+    setDrawerMode('duplicate');
+    setIsDrawerOpen(true);
+  };
+
+  // ── 删除防御拦截 ──
+  const handleDelete = (rule: any) => {
+    // 拦截：如果规则被单票手动订阅（强绑定），不允许删除
+    if (rule.boundShipments > 0) {
+      toast.error('删除失败：该规则当前已被特定单据手动订阅，无法删除。', {
+        description: `共有 ${rule.boundShipments} 票单据订阅了此规则。建议先将其状态停用。`,
+        duration: 6000,
+      });
+      return;
+    }
+    if (confirm('确定要删除这条规则吗？删除后不可恢复。')) {
+      setRules(prev => prev.filter(r => r.id !== rule.id));
+      toast.success('规则已删除');
     }
   };
 
@@ -121,19 +157,30 @@ export default function GlobalRuleBuilder() {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
               <tr>
-                <th className="px-6 py-3 w-32">规则编号</th>
-                <th className="px-6 py-3 w-64">规则名称</th>
+                <th className="px-6 py-3 w-28">规则编号</th>
+                <th className="px-6 py-3">规则名称</th>
                 <th className="px-6 py-3 w-48">适用业务域</th>
                 <th className="px-6 py-3">触发条件概要</th>
-                <th className="px-6 py-3 w-32 text-center">状态</th>
-                <th className="px-6 py-3 w-24 text-right">操作</th>
+                <th className="px-6 py-3 w-28 text-center">状态</th>
+                <th className="px-6 py-3 w-40">最后更新时间</th>
+                <th className="px-6 py-3 w-24">操作人</th>
+                <th className="px-6 py-3 w-28 text-right">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rules.map((rule) => (
                 <tr key={rule.id} className="hover:bg-slate-50 group transition-colors">
                   <td className="px-6 py-4 font-mono text-slate-500 text-xs">{rule.id}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900">{rule.name}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-900">{rule.name}</span>
+                      {rule.boundShipments > 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100" title={`${rule.boundShipments} 票单据手动订阅`}>
+                          {rule.boundShipments} 票绑定
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">
                       {rule.domains.map(d => {
@@ -165,8 +212,14 @@ export default function GlobalRuleBuilder() {
                       />
                     </button>
                   </td>
+                  <td className="px-6 py-4">
+                    <span className="text-xs text-slate-400 font-mono">{rule.updatedAt}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm text-slate-500">{rule.updatedBy}</span>
+                  </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={() => handleEdit(rule)}
                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
@@ -175,7 +228,14 @@ export default function GlobalRuleBuilder() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => handleDelete(rule.id)}
+                        onClick={() => handleDuplicate(rule)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                        title="复制克隆"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(rule)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                         title="删除"
                       >
@@ -201,6 +261,7 @@ export default function GlobalRuleBuilder() {
         isOpen={isDrawerOpen} 
         onClose={() => setIsDrawerOpen(false)} 
         initialData={editingRule}
+        mode={drawerMode}
       />
     </div>
   );
